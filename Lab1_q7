@@ -1,0 +1,46 @@
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    cout << "Enter the size of elementary matrix / column vector: ";
+    cin >> n;
+
+    vector<float> vec(n);
+    cout << "Enter the values of column vector: ";
+    for (int i = 0; i < n; ++i)
+        cin >> vec[i];
+
+    int p;  // index of your choice
+    cout << "Enter any index of your choice: ";
+    cin >> p;
+
+    vector<vector<float>> arr(n, vector<float>(n, 0));
+    float elem = vec[p];
+
+    // Constructing elementary matrix
+    for (int i = 0; i < n; ++i) {
+        if (i == p) {
+            arr[i][p] = 1.0 / elem;  // make the chosen index position 1
+        } else {
+            arr[i][p] = -1.0 * vec[i] / elem;  // eliminate the other entries
+        }
+    }
+
+    // Fill diagonal elements as identity (except column p)
+    for (int i = 0; i < n; ++i) {
+        if (i != p)
+            arr[i][i] = 1;
+    }
+
+    // Print the resulting elementary matrix
+    cout << "\nElementary Matrix:\n";
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j)
+            cout << arr[i][j] << " ";
+        cout << endl;
+    }
+
+    return 0;
+}
