@@ -1,0 +1,134 @@
+#include<iostream>
+#include<climits>
+using namespace std;
+
+int main(){
+    int m,n;
+    cout << "Enter number of origins and destinations: ";
+    cin >> m >> n;
+    int c[10][10],a[10],b[10],row_ind[20],col_ind[20],soln[20];
+    int u[10],v[10],uivj_cij[10][10],mat[10][10];
+    int optcost=0, count=0, entvri=0, entvci=0, leavri=0, leavci=0, tnbv=0, amax=0, amin=0, minval=0, minpos=0;
+    int i=0, j=0, aa[10], bb[10];
+    int loop_row[20], loop_col[20], loop_count=0;
+    int f=0, current_row=0, current_col=0, max_iter=0;
+    bool done=false;
+    // Input
+    tnbv = m+n-1;
+    for(int idx=0;idx<m;idx++) aa[idx]=0;
+    for(int idx=0;idx<n;idx++) bb[idx]=0;
+    cout << "Enter cost matrix:\n";
+    for(i=0;i<m;i++) for(j=0;j<n;j++) cin >> c[i][j];
+    cout << "Enter supply vector:\n";
+    for(i=0;i<m;i++) { cin>>a[i]; aa[i]=a[i]; }
+    cout << "Enter demand vector:\n";
+    for(j=0;j<n;j++) { cin>>b[j]; bb[j]=b[j]; }
+    i=0;j=0;count=0;
+
+    // Northwest Corner allocation:
+    allocation:
+    while(count<tnbv){
+        if(aa[i]<bb[j]){
+            row_ind[count]=i; col_ind[count]=j; soln[count]=aa[i];
+            bb[j]-=aa[i]; aa[i]=0; i++;
+        }else{
+            row_ind[count]=i; col_ind[count]=j; soln[count]=bb[j];
+            aa[i]-=bb[j]; bb[j]=0; j++;
+        } count++;
+    }
+    cout << "\nInitial BFS (row, col, value):\n";
+    for(int k=0;k<tnbv;k++)
+        cout<<"["<<row_ind[k]+1<<","<<col_ind[k]+1<<"] = "<<soln[k]<<endl;
+
+    // Optimization loop
+    step:
+    // Calculate u, v
+    u[0]=0; for(i=1;i<m;i++) u[i]=-1000; for(j=0;j<n;j++) v[j]=-1000;
+    count=0;
+    while(count<tnbv){
+        for(int k=0;k<tnbv;k++){
+            int row=row_ind[k],col=col_ind[k];
+            if(u[row]==-1000&&v[col]==-1000) continue;
+            if(u[row]==-1000){u[row]=c[row][col]-v[col];count++;}
+            else if(v[col]==-1000){v[col]=c[row][col]-u[row];count++;}
+        }
+    }
+    // Calculate uivj_cij and find entering variable
+    amax=INT_MIN; entvri=-1; entvci=-1;
+    for(i=0;i<m;i++){
+        for(j=0;j<n;j++){
+            uivj_cij[i][j]=u[i]+v[j]-c[i][j];
+            if(uivj_cij[i][j]>amax){
+                amax=uivj_cij[i][j]; entvri=i; entvci=j;
+            }
+        }
+    }
+    if(amax<=0){
+        cout << "\nOptimal Solution:\n";
+        optcost=0;
+        for(int k=0;k<tnbv;k++){
+            cout<<"["<<row_ind[k]+1<<","<<col_ind[k]+1<<"]="<<soln[k]<<" ";
+            optcost+=soln[k]*c[row_ind[k]][col_ind[k]];
+        }
+        cout<<"\nOptimal Cost: "<<optcost<<endl;
+        goto end;
+    }
+    // Closed loop construction (manual)
+    for(int ii=0;ii<10;ii++) for(int jj=0;jj<10;jj++) mat[ii][jj]=0;
+    for(i=0;i<tnbv;i++) mat[row_ind[i]][col_ind[i]]=1;
+    mat[entvri][entvci]=1;
+
+    loop_count=0; f=0; current_row=entvri; current_col=entvci; max_iter=tnbv*2; done=false;
+    loop_row[loop_count]=entvri; loop_col[loop_count]=entvci; loop_count++;
+    for(int step_iter=0; step_iter<max_iter && !done; step_iter++){
+        if(f==0){ // horizontal
+            for(int jj=0;jj<n;jj++){
+                if(jj==current_col) continue;
+                if(mat[current_row][jj]==1){
+                    loop_row[loop_count]=current_row; loop_col[loop_count]=jj; loop_count++;
+                    current_col=jj;
+                    f=1;
+                    break;
+                }
+            }
+        }else{ // vertical
+            for(int ii=0;ii<m;ii++){
+                if(ii==current_row) continue;
+                if(mat[ii][current_col]==1){
+                    loop_row[loop_count]=ii; loop_col[loop_count]=current_col; loop_count++;
+                    current_row=ii;
+                    f=0;
+                    if(ii==entvri && current_col==entvci) done=true;
+                    break;
+                }
+            }
+        }
+    }
+    if(!done){ cout<<"No path found\n"; goto end; }
+    // Find leaving variable (min in - cells of loop, idx even>0)
+    minval=INT_MAX; minpos=-1;
+    for(int idx=2;idx<loop_count;idx+=2){
+        int r=loop_row[idx],c=loop_col[idx];
+        for(int j=0;j<tnbv;j++){
+            if(row_ind[j]==r && col_ind[j]==c && soln[j]<minval){
+                minval=soln[j]; minpos=j; leavri=r; leavci=c;
+            }
+        }
+    }
+    // Update allocations (+/- theta)
+    for(int idx=0;idx<loop_count;idx++){
+        int r=loop_row[idx],c=loop_col[idx];
+        for(int j=0;j<tnbv;j++){
+            if(row_ind[j]==r && col_ind[j]==c){
+                if(idx%2==0) soln[j]-=minval;
+                else soln[j]+=minval;
+            }
+        }
+    }
+    soln[minpos]=minval; row_ind[minpos]=entvri; col_ind[minpos]=entvci; mat[leavri][leavci]=0;
+    cout<<"Entering variable: ["<<entvri+1<<","<<entvci+1<<"], Leaving variable: ["<<leavri+1<<","<<leavci+1<<"]\n";
+    goto step;
+
+    end:
+    return 0;
+}
