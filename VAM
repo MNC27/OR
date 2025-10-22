@@ -1,0 +1,313 @@
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <utility>
+#include <limits>
+#include <algorithm>
+using namespace std;
+
+// Function to read 1D vector (supply/demand)
+void read(vector<int>& arr, int n) {
+    arr.resize(n);
+    for (int i = 0; i < n; i++)
+        cin >> arr[i];
+}
+
+// Function to read 2D cost matrix
+void read(vector<vector<int>>& arr, int n, int m) {
+    arr.resize(n, vector<int>(m));
+    for (int i = 0; i < n; i++) {
+        cout << "Enter the elements of row " << i + 1 << ": ";
+        for (int j = 0; j < m; j++)
+            cin >> arr[i][j];
+    }
+}
+
+int main() {
+    int m, n;
+    cout << "Enter the number of sources and destinations respectively: ";
+    cin >> m >> n;
+
+    vector<int> a(m), b(n);
+    cout << "Enter the supply at each source: ";
+    read(a, m);
+    cout << "Enter the demand at each destination: ";
+    read(b, n);
+
+    vector<vector<int>> cost(m, vector<int>(n));
+    cout << "Enter the cost matrix:\n";
+    read(cost, m, n);
+
+    // --- VOGEL’S APPROXIMATION METHOD (VAM) for IBFS ---
+    vector<int> supply = a;
+    vector<int> demand = b;
+    vector<vector<int>> alloc(m, vector<int>(n, 0));
+    vector<bool> row_done(m, false), col_done(n, false);
+
+    int total_allocations = 0;
+
+    while (total_allocations < m + n - 1) {
+        // Step 1: Calculate row and column penalties
+        vector<int> row_penalty(m, -1), col_penalty(n, -1);
+
+        // Row penalties
+        for (int i = 0; i < m; i++) {
+            if (row_done[i]) continue;
+            vector<int> valid_costs;
+            for (int j = 0; j < n; j++)
+                if (!col_done[j])
+                    valid_costs.push_back(cost[i][j]);
+            if (valid_costs.size() >= 2) {
+                sort(valid_costs.begin(), valid_costs.end());
+                row_penalty[i] = valid_costs[1] - valid_costs[0];
+            } else if (valid_costs.size() == 1) {
+                row_penalty[i] = valid_costs[0];
+            }
+        }
+
+        // Column penalties
+        for (int j = 0; j < n; j++) {
+            if (col_done[j]) continue;
+            vector<int> valid_costs;
+            for (int i = 0; i < m; i++)
+                if (!row_done[i])
+                    valid_costs.push_back(cost[i][j]);
+            if (valid_costs.size() >= 2) {
+                sort(valid_costs.begin(), valid_costs.end());
+                col_penalty[j] = valid_costs[1] - valid_costs[0];
+            } else if (valid_costs.size() == 1) {
+                col_penalty[j] = valid_costs[0];
+            }
+        }
+
+        // Step 2: Find the largest penalty
+        int max_penalty = -1, is_row = 1, idx = -1;
+        for (int i = 0; i < m; i++) {
+            if (!row_done[i] && row_penalty[i] > max_penalty) {
+                max_penalty = row_penalty[i];
+                idx = i;
+                is_row = 1;
+            }
+        }
+        for (int j = 0; j < n; j++) {
+            if (!col_done[j] && col_penalty[j] > max_penalty) {
+                max_penalty = col_penalty[j];
+                idx = j;
+                is_row = 0;
+            }
+        }
+
+        // Step 3: Find the cell with the minimum cost in that row/column
+        int min_i = -1, min_j = -1, min_cost = INT_MAX;
+        if (is_row) {
+            int i = idx;
+            for (int j = 0; j < n; j++) {
+                if (!col_done[j] && cost[i][j] < min_cost) {
+                    min_cost = cost[i][j];
+                    min_i = i;
+                    min_j = j;
+                }
+            }
+        } else {
+            int j = idx;
+            for (int i = 0; i < m; i++) {
+                if (!row_done[i] && cost[i][j] < min_cost) {
+                    min_cost = cost[i][j];
+                    min_i = i;
+                    min_j = j;
+                }
+            }
+        }
+
+        // Step 4: Allocate to the selected cell
+        int allocation = min(supply[min_i], demand[min_j]);
+        alloc[min_i][min_j] = allocation;
+        supply[min_i] -= allocation;
+        demand[min_j] -= allocation;
+        total_allocations++;
+
+        if (supply[min_i] == 0) row_done[min_i] = true;
+        if (demand[min_j] == 0) col_done[min_j] = true;
+    }
+
+    // Step 5: Store basic variable indices for MODI
+    vector<int> row_ind, col_ind, soln;
+    long long optimum_cost = 0;
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            if (alloc[i][j] > 0) {
+                row_ind.push_back(i);
+                col_ind.push_back(j);
+                soln.push_back(alloc[i][j]);
+                optimum_cost += (long long)alloc[i][j] * cost[i][j];
+            }
+        }
+    }
+    int count = row_ind.size();
+
+    cout << "\nInitial Basic Feasible Solution (VAM):\n";
+    for (int k = 0; k < count; k++) {
+        cout << "From source " << row_ind[k] + 1 << " to destination " << col_ind[k] + 1
+             << " transport " << soln[k] << " units\n";
+    }
+    cout << "\nInitial cost (VAM): " << optimum_cost << "\n\n";
+
+    // ===============================
+    // MODI (u, v) Method for Optimality
+    // ===============================
+    vector<int> u(m), v(n);
+    while (true) {
+        const int UNVISITED = numeric_limits<int>::max();
+        u.assign(m, UNVISITED);
+        v.assign(n, UNVISITED);
+        u[0] = 0;
+
+        queue<pair<char, int>> q;
+        q.push({'r', 0});
+
+        while (!q.empty()) {
+            char type = q.front().first;
+            int index = q.front().second;
+            q.pop();
+
+            if (type == 'r') {
+                for (int k = 0; k < count; k++) {
+                    if (row_ind[k] == index && v[col_ind[k]] == UNVISITED) {
+                        v[col_ind[k]] = cost[index][col_ind[k]] - u[index];
+                        q.push({'c', col_ind[k]});
+                    }
+                }
+            } else {
+                for (int k = 0; k < count; k++) {
+                    if (col_ind[k] == index && u[row_ind[k]] == UNVISITED) {
+                        u[row_ind[k]] = cost[row_ind[k]][index] - v[index];
+                        q.push({'r', row_ind[k]});
+                    }
+                }
+            }
+        }
+
+        int max_opportunity_cost = 0;
+        int entering_r = -1, entering_c = -1;
+        for (int r = 0; r < m; r++) {
+            for (int c = 0; c < n; c++) {
+                bool is_basic = false;
+                for (int k = 0; k < count; k++) {
+                    if (row_ind[k] == r && col_ind[k] == c) {
+                        is_basic = true;
+                        break;
+                    }
+                }
+                if (!is_basic) {
+                    int opportunity_cost = u[r] + v[c] - cost[r][c];
+                    if (opportunity_cost > max_opportunity_cost) {
+                        max_opportunity_cost = opportunity_cost;
+                        entering_r = r;
+                        entering_c = c;
+                    }
+                }
+            }
+        }
+
+        if (max_opportunity_cost <= 0) {
+            cout << "--- Optimality Reached ---\n";
+            break;
+        }
+
+        vector<pair<int, int>> candidates;
+        for (int k = 0; k < count; ++k)
+            candidates.push_back({row_ind[k], col_ind[k]});
+        candidates.push_back({entering_r, entering_c});
+
+        vector<int> rowCount(m, 0), colCount(n, 0);
+        for (auto& c : candidates) {
+            rowCount[c.first]++;
+            colCount[c.second]++;
+        }
+
+        bool removed;
+        do {
+            removed = false;
+            for (auto it = candidates.begin(); it != candidates.end();) {
+                if (rowCount[it->first] == 1 || colCount[it->second] == 1) {
+                    rowCount[it->first]--;
+                    colCount[it->second]--;
+                    it = candidates.erase(it);
+                    removed = true;
+                } else ++it;
+            }
+        } while (removed);
+
+        vector<pair<int, int>> loop_path;
+        loop_path.push_back({entering_r, entering_c});
+        int cur_r = entering_r, cur_c = entering_c;
+
+        while (loop_path.size() < candidates.size()) {
+            for (auto& cell : candidates) {
+                if (cell.first == cur_r && cell.second != cur_c) {
+                    cur_c = cell.second;
+                    loop_path.push_back(cell);
+                    break;
+                }
+            }
+            for (auto& cell : candidates) {
+                if (cell.second == cur_c && cell.first != cur_r) {
+                    cur_r = cell.first;
+                    loop_path.push_back(cell);
+                    break;
+                }
+            }
+        }
+
+        int theta = numeric_limits<int>::max();
+        int leaving_r = -1, leaving_c = -1;
+        for (int k = 1; k < loop_path.size(); k += 2) {
+            for (int l = 0; l < count; l++) {
+                if (row_ind[l] == loop_path[k].first && col_ind[l] == loop_path[k].second) {
+                    if (soln[l] < theta) {
+                        theta = soln[l];
+                        leaving_r = row_ind[l];
+                        leaving_c = col_ind[l];
+                    }
+                    break;
+                }
+            }
+        }
+
+        for (int k = 0; k < loop_path.size(); k++) {
+            int r = loop_path[k].first;
+            int c = loop_path[k].second;
+            int sign = (k % 2 == 0) ? 1 : -1;
+            int l_idx = -1;
+            for (int l = 0; l < count; l++) {
+                if (row_ind[l] == r && col_ind[l] == c) {
+                    l_idx = l;
+                    break;
+                }
+            }
+            if (l_idx != -1)
+                soln[l_idx] += theta * sign;
+        }
+
+        for (int k = 0; k < count; k++) {
+            if (row_ind[k] == leaving_r && col_ind[k] == leaving_c) {
+                row_ind[k] = entering_r;
+                col_ind[k] = entering_c;
+                soln[k] = theta;
+                break;
+            }
+        }
+
+        optimum_cost -= (long long)theta * max_opportunity_cost;
+        cout << "Iteration update: New cost = " << optimum_cost << endl;
+    }
+
+    cout << "\nFinal Optimal Solution:\n";
+    for (int k = 0; k < count; k++) {
+        if (soln[k] > 0)
+            cout << "From source " << row_ind[k] + 1 << " → destination "
+                 << col_ind[k] + 1 << " : " << soln[k] << " units\n";
+    }
+    cout << "\nFinal Optimum Cost: " << optimum_cost << "\n";
+    return 0;
+}
